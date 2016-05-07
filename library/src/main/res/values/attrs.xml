@@ -26,6 +26,8 @@
         <attr name="hourSeparatorColor" format="color"/>
         <attr name="todayBackgroundColor" format="color"/>
         <attr name="todayHeaderTextColor" format="color"/>
+        <attr name="emptyCellPlaceholderColor" format="color"/>
+        <attr name="emptyCellPlaceholderIconColor" format="color"/>
         <attr name="hourSeparatorHeight" format="dimension"/>
         <attr name="eventTextColor" format="color"/>
         <attr name="eventPadding" format="dimension"/>

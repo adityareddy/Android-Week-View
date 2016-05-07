@@ -81,6 +81,10 @@ public class WeekView extends View {
     private Paint mNowLinePaint;
     private Paint mTodayHeaderTextPaint;
     private Paint mEventBackgroundPaint;
+    private Paint mEmptyCellPlaceholderPaint;
+    private Paint mEmptyCellPlaceholderIconPaint;
+    private Calendar mEmptyCellClickTime;
+    private RectF mPlaceholderRect;
     private float mHeaderColumnWidth;
     private List<EventRect> mEventRects;
     private List<? extends WeekViewEvent> mPreviousPeriodEvents;
@@ -116,6 +120,8 @@ public class WeekView extends View {
     private int mDayBackgroundColor = Color.rgb(245, 245, 245);
     private int mPastBackgroundColor = Color.rgb(227, 227, 227);
     private int mFutureBackgroundColor = Color.rgb(245, 245, 245);
+    private int mEmptyCellPlaceholderColor = Color.rgb(174, 208, 238);
+    private int mEmptyCellPlaceholderIconColor = Color.rgb(14, 28, 38);
     private int mPastWeekendBackgroundColor = 0;
     private int mFutureWeekendBackgroundColor = 0;
     private int mNowLineColor = Color.rgb(102, 102, 102);
@@ -144,9 +150,11 @@ public class WeekView extends View {
     private boolean mVerticalFlingEnabled = true;
     private int mAllDayEventHeight = 100;
     private int mScrollDuration = 250;
+    private float mPlaceholderIconSize = 40f;
 
     // Listeners.
     private EventClickListener mEventClickListener;
+    private PlaceholderClickListener mPlaceholderClickListener;
     private EventLongPressListener mEventLongPressListener;
     private WeekViewLoader mWeekViewLoader;
     private EmptyViewClickListener mEmptyViewClickListener;
@@ -257,12 +265,22 @@ public class WeekView extends View {
                 }
             }
 
+            // If the tap was on the placeholder then trigger the callback.
+            if (mEmptyCellClickTime != null && mPlaceholderClickListener != null) {
+                if (mPlaceholderRect != null && e.getX() > mPlaceholderRect.left && e.getX() < mPlaceholderRect.right && e.getY() > mPlaceholderRect.top && e.getY() < mPlaceholderRect.bottom) {
+                    mPlaceholderClickListener.onPlaceholderClick(mEmptyCellClickTime, mPlaceholderRect);
+                    playSoundEffect(SoundEffectConstants.CLICK);
+                    return super.onSingleTapConfirmed(e);
+                }
+            }
+
             // If the tap was on in an empty space, then trigger the callback.
             if (mEmptyViewClickListener != null && e.getX() > mHeaderColumnWidth && e.getY() > (mHeaderHeight + mHeaderRowPadding * 2 + mHeaderMarginBottom)) {
-                Calendar selectedTime = getTimeFromPoint(e.getX(), e.getY());
-                if (selectedTime != null) {
+                mEmptyCellClickTime = getTimeFromPoint(e.getX(), e.getY());
+                invalidate();
+                if (mEmptyCellClickTime != null) {
                     playSoundEffect(SoundEffectConstants.CLICK);
-                    mEmptyViewClickListener.onEmptyViewClicked(selectedTime);
+                    mEmptyViewClickListener.onEmptyViewClicked(mEmptyCellClickTime);
                 }
             }
 
@@ -287,10 +305,11 @@ public class WeekView extends View {
 
             // If the tap was on in an empty space, then trigger the callback.
             if (mEmptyViewLongPressListener != null && e.getX() > mHeaderColumnWidth && e.getY() > (mHeaderHeight + mHeaderRowPadding * 2 + mHeaderMarginBottom)) {
-                Calendar selectedTime = getTimeFromPoint(e.getX(), e.getY());
-                if (selectedTime != null) {
+                mEmptyCellClickTime = getTimeFromPoint(e.getX(), e.getY());
+                invalidate();
+                if (mEmptyCellClickTime != null) {
                     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    mEmptyViewLongPressListener.onEmptyViewLongPress(selectedTime);
+                    mEmptyViewLongPressListener.onEmptyViewLongPress(mEmptyCellClickTime);
                 }
             }
         }
@@ -334,6 +353,8 @@ public class WeekView extends View {
             mNowLineColor = a.getColor(R.styleable.WeekView_nowLineColor, mNowLineColor);
             mNowLineThickness = a.getDimensionPixelSize(R.styleable.WeekView_nowLineThickness, mNowLineThickness);
             mHourSeparatorColor = a.getColor(R.styleable.WeekView_hourSeparatorColor, mHourSeparatorColor);
+            mEmptyCellPlaceholderColor = a.getColor(R.styleable.WeekView_emptyCellPlaceholderColor, mEmptyCellPlaceholderColor);
+            mEmptyCellPlaceholderIconColor = a.getColor(R.styleable.WeekView_emptyCellPlaceholderIconColor, mEmptyCellPlaceholderIconColor);
             mTodayBackgroundColor = a.getColor(R.styleable.WeekView_todayBackgroundColor, mTodayBackgroundColor);
             mHourSeparatorHeight = a.getDimensionPixelSize(R.styleable.WeekView_hourSeparatorHeight, mHourSeparatorHeight);
             mTodayHeaderTextColor = a.getColor(R.styleable.WeekView_todayHeaderTextColor, mTodayHeaderTextColor);
@@ -442,6 +463,12 @@ public class WeekView extends View {
 
         // Set default event color.
         mDefaultEventColor = Color.parseColor("#9fc6e7");
+
+        // Set placeholder color.
+        mEmptyCellPlaceholderPaint = new Paint();
+        mEmptyCellPlaceholderPaint.setColor(mEmptyCellPlaceholderColor);
+        mEmptyCellPlaceholderIconPaint = new Paint();
+        mEmptyCellPlaceholderIconPaint.setColor(mEmptyCellPlaceholderIconColor);
 
         mScaleDetector = new ScaleGestureDetector(mContext, new ScaleGestureDetector.OnScaleGestureListener() {
             @Override
@@ -699,6 +726,17 @@ public class WeekView extends View {
 
             // Draw the events.
             drawEvents(day, startPixel, canvas);
+
+            // Draw the placeholder.
+            if (mEmptyCellClickTime != null){
+                float placeholderTop = mHeaderHeight + mHeaderRowPadding * 2 + mCurrentOrigin.y + mHourHeight * mEmptyCellClickTime.get(Calendar.HOUR_OF_DAY) + mTimeTextHeight/2 + mHeaderMarginBottom;
+
+                if(isSameDay(day, mEmptyCellClickTime)) {
+                    mPlaceholderRect = new RectF(startPixel, placeholderTop, startPixel + mWidthPerDay, placeholderTop + mHourHeight);
+                    canvas.drawRect(mPlaceholderRect, mEmptyCellPlaceholderPaint);
+                    canvas.drawRect(startPixel + (mWidthPerDay - mPlaceholderIconSize)/2, placeholderTop + (mHourHeight - mPlaceholderIconSize)/2, startPixel + (mWidthPerDay + mPlaceholderIconSize)/2, placeholderTop + (mHourHeight + mPlaceholderIconSize)/2, mEmptyCellPlaceholderIconPaint);
+                }
+            }
 
             // Draw the line at the current time.
             if (mShowNowLine && sameDay){
@@ -1274,6 +1312,14 @@ public class WeekView extends View {
 
     public EmptyViewClickListener getEmptyViewClickListener(){
         return mEmptyViewClickListener;
+    }
+
+    public void setPlaceholderClickListener(PlaceholderClickListener placeholderClickListener){
+        this.mPlaceholderClickListener = placeholderClickListener;
+    }
+
+    public PlaceholderClickListener getPlaceholderClickListener(){
+        return mPlaceholderClickListener;
     }
 
     public void setEmptyViewLongPressListener(EmptyViewLongPressListener emptyViewLongPressListener){
@@ -2002,6 +2048,15 @@ public class WeekView extends View {
          * @param eventRect: view containing the clicked event.
          */
         void onEventClick(WeekViewEvent event, RectF eventRect);
+    }
+
+    public interface PlaceholderClickListener {
+        /**
+         * Triggered when clicked on the placeholder
+         * @param time: {@link Calendar} object set with the date and time of the placeholder.
+         * @param placeholderRect: view containing the clicked event.
+         */
+        void onPlaceholderClick(Calendar time, RectF placeholderRect);
     }
 
     public interface EventLongPressListener {
